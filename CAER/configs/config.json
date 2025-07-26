@@ -1,0 +1,71 @@
+{
+  "name": "CAERS_Session",
+  "n_gpu": 1,
+  "arch": {
+    "type": "CAERSNet",
+    "args": {
+      "num_classes": 7,
+      "face_model_path": "/content/drive/MyDrive/DatMinhNe/models/modelface/FER_trained_model.pt"
+    }
+  },
+  "loss": "cross_entropy",
+  "metrics": [
+    "accuracy"
+  ],
+  "test_loader": {
+    "type": "CAERSDataLoader",
+    "args": {
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test_with_body.txt",
+      "train": false,
+      "batch_size": 32,
+      "shuffle": false,
+      "num_workers": 2
+    }
+  },
+  "train_loader": {
+    "type": "CAERSDataLoader",
+    "args": {
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train_with_body.txt",
+      "batch_size": 32,
+      "shuffle": true,
+      "num_workers": 2
+    }
+  },
+  "val_loader": {
+    "type": "CAERSDataLoader",
+    "args": {
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/val_with_body.txt",
+      "train": false,
+      "batch_size": 32,
+      "shuffle": false,
+      "num_workers": 2
+    }
+  },
+  "optimizer": {
+    "type": "SGD",
+    "args": {
+      "lr": 1e-2,
+      "momentum": 0.9,
+      "nesterov": true
+    }
+  },
+  "lr_scheduler": {  
+    "type": "StepLR",
+    "args": {
+      "step_size": 10,
+      "gamma": 0.1
+    }
+  },
+  "trainer": {
+    "epochs": 1,
+    "save_dir": "saved/",
+    "save_period": 10,
+    "verbosity": 2,
+    "monitor": "max val_accuracy",
+    "early_stop": 20,
+    "tensorboard": false
+  }
+}
