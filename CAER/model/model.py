@@ -51,114 +51,213 @@ class FaceEmotionCNN(nn.Module):
 
 # Thay thế hàm cũ bằng hàm này trong file model/model.py
 
-def create_swin_backbone():
+def create_backbone(name: str):
     """
-    Tạo một backbone Swin-T và loại bỏ lớp classifier cuối cùng.
-    Swin-T đã tự thực hiện pooling và flatten bên trong.
+    Hàm "nhà máy" (factory) hợp nhất để tạo các backbone khác nhau.
+    Luôn trả về một tuple: (module_backbone_trả_về_vector_1D, số_chiều_đặc_trưng).
     """
-    model = models.swin_t(weights='DEFAULT')
+    if name == 'resnet18':
+        model = models.resnet18(weights='DEFAULT')
+        feature_dim = model.fc.in_features  # 512
+        model.fc = nn.Identity()
+        return model, feature_dim
     
-    # Chỉ cần bỏ đi lớp head cuối cùng là đủ.
-    # Đầu ra của backbone này đã là một vector đặc trưng 1D (shape [batch, 768]).
-    backbone = nn.Sequential(*(list(model.children())[:-1]))
-    
-    return backbone
-# ======================
-# Create Resnet backbone
-# ======================
+    elif name == 'resnet50':
+        model = models.resnet50(weights='DEFAULT')
+        feature_dim = model.fc.in_features # 2048
+        model.fc = nn.Identity()
+        return model, feature_dim
+        
+    elif name == 'resnet50_places':
+        model = models.resnet50(num_classes=365)
+        url = 'http://data.csail.mit.edu/places/places365/resnet50_places365.pth.tar'
+        checkpoint = torch.hub.load_state_dict_from_url(url, map_location=lambda storage, loc: storage)
+        state_dict = {str.replace(k,'module.',''): v for k,v in checkpoint['state_dict'].items()}
+        model.load_state_dict(state_dict)
+        print("Đã tải thành công trọng số ResNet50-Places365.")
+        feature_dim = model.fc.in_features # 2048
+        model.fc = nn.Identity()
+        return model, feature_dim
 
-# def create_resnet_backbone():
-
-
+    elif name == 'swin_t':
+        model = models.swin_t(weights='DEFAULT')
+        feature_dim = model.head.in_features # 768
+        model.head = nn.Identity()
+        return model, feature_dim
+        
+    else:
+        raise ValueError(f"Backbone '{name}' không được hỗ trợ. Vui lòng chọn: 'resnet18', 'resnet50', 'resnet50_places', 'swin_t'.")
 # ==============================================================================
 # 2. KIẾN TRÚC KẾT HỢP
 # ==============================================================================
 
 class FeatureExtractors(nn.Module):
     """
-    Module này chứa 3 bộ trích xuất đặc trưng cho Face, Body, và Context.
-    CẬP NHẬT: Tự động chuyển đổi key khi tải model face.
+    Module chứa 3 bộ trích xuất đặc trưng cho Face, Body, và Context.
+    CẬP NHẬT: Thêm lại đầy đủ logic tải và chuyển đổi key cho Face Model.
     """
-    def __init__(self, face_model_path, num_classes=7):
+    def __init__(self, face_model_path, num_classes=7, body_backbone='swin_t', context_backbone='resnet50_places',
+                 freeze_backbones=True):
+        """
+        :param face_model_path: Đường dẫn đến file trọng số Face Model.
+        :param num_classes: Số lớp đầu ra của Face Model.
+        :param body_backbone: Tên của backbone cho Body.
+        :param context_backbone: Tên của backbone cho Context.
+        :param freeze_backbones: Nếu True, đóng băng các backbone để không cập nhật trọng số trong quá trình huấn luyện.
+        """
         super().__init__()
         
-        # --- Face Extractor ---
+        # --- Face Extractor (Tùy chỉnh) ---
+        # 1. Khởi tạo kiến trúc FaceEmotionCNN mới
         full_face_model = FaceEmotionCNN(num_classes=num_classes)
         
-        # --- LOGIC CHUYỂN ĐỔI KEY "NÓNG" ---
-        old_state_dict = torch.load(face_model_path, map_location=torch.device('cpu'))
-        new_state_dict = OrderedDict()
-        
-        key_map = {
-            'cnn1': 'features.0',  'cnn1_bn': 'features.1',
-            'cnn2': 'features.4',  'cnn2_bn': 'features.6',
-            'cnn3': 'features.9',  'cnn3_bn': 'features.10',
-            'cnn4': 'features.13', 'cnn4_bn': 'features.15',
-            'cnn5': 'features.18', 'cnn5_bn': 'features.19',
-            'cnn6': 'features.22', 'cnn6_bn': 'features.24',
-            'cnn7': 'features.27', 'cnn7_bn': 'features.29',
-            'fc1': 'classifier.1', 'fc2': 'classifier.4', 'fc3': 'classifier.7',
-        }
-        
-        for old_key, value in old_state_dict.items():
-            parts = old_key.split('.')
-            layer_name = parts[0]
-            if layer_name in key_map:
-                param_type = '.'.join(parts[1:])
-                new_layer_name = key_map[layer_name]
-                new_key = f"{new_layer_name}.{param_type}"
-                new_state_dict[new_key] = value
-        
-        full_face_model.load_state_dict(new_state_dict)
-        print(f"Đã tải và chuyển đổi thành công trọng số cho Face Model từ: {face_model_path}")
-        # --- KẾT THÚC LOGIC CHUYỂN ĐỔI ---
-        
-        self.face_features = full_face_model.features
-        self.face_classifier_head = full_face_model.classifier[:-1]
+        # 2. Bắt đầu logic tải và chuyển đổi key từ file checkpoint cũ
+        print(f"Bắt đầu tải và chuyển đổi trọng số cho Face Model từ: {face_model_path}")
+        try:
+            old_state_dict = torch.load(face_model_path, map_location=torch.device('cpu'))
+            new_state_dict = OrderedDict()
+            
+            # Ánh xạ từ tên lớp cũ sang tên lớp mới trong nn.Sequential
+            key_map = {
+                'cnn1': 'features.0',  'cnn1_bn': 'features.1',
+                'cnn2': 'features.4',  'cnn2_bn': 'features.6',
+                'cnn3': 'features.9',  'cnn3_bn': 'features.10',
+                'cnn4': 'features.13', 'cnn4_bn': 'features.15',
+                'cnn5': 'features.18', 'cnn5_bn': 'features.19',
+                'cnn6': 'features.22', 'cnn6_bn': 'features.24',
+                'cnn7': 'features.27', 'cnn7_bn': 'features.29',
+                'fc1': 'classifier.1', 'fc2': 'classifier.4', 'fc3': 'classifier.7',
+            }
+            
+            for old_key, value in old_state_dict.items():
+                parts = old_key.split('.')
+                layer_name = parts[0]
+                if layer_name in key_map:
+                    param_type = '.'.join(parts[1:])
+                    new_layer_name = key_map[layer_name]
+                    new_key = f"{new_layer_name}.{param_type}"
+                    new_state_dict[new_key] = value
+                else:
+                    # Giữ lại các key không cần chuyển đổi nếu có
+                    new_state_dict[old_key] = value
+            
+            # Tải state_dict đã được chuyển đổi vào model mới
+            full_face_model.load_state_dict(new_state_dict)
+            print("=> Đã tải và chuyển đổi thành công trọng số cho Face Model.")
 
-        # --- Body and Context Extractors ---
-        self.body_extractor = create_swin_backbone()
-        self.context_extractor = create_swin_backbone()
+        except FileNotFoundError:
+            print(f"CẢNH BÁO: Không tìm thấy file trọng số cho Face Model tại '{face_model_path}'. Sử dụng trọng số ngẫu nhiên.")
+        except Exception as e:
+            print(f"Lỗi khi tải trọng số Face Model: {e}. Sử dụng trọng số ngẫu nhiên.")
+
+        # 3. Tách phần trích xuất đặc trưng và phần đầu của classifier
+        self.face_features = full_face_model.features
+        self.face_classifier_head = full_face_model.classifier[:-1] # Bỏ lớp fc cuối cùng
+        self.face_dim = 256 # Kích thước đặc trưng cuối cùng của face stream
+
+        # --- Body and Context Extractors (Linh hoạt) ---
+        print(f"Sử dụng backbone '{body_backbone}' cho Body.")
+        self.body_extractor, self.body_dim = create_backbone(body_backbone)
+        
+        print(f"Sử dụng backbone '{context_backbone}' cho Context.")
+        self.context_extractor, self.context_dim = create_backbone(context_backbone)
+
+
+        if freeze_backbones:
+            print("--- ĐÓNG BĂNG CÁC BACKBONE ---")
+            # Đóng băng phần trích xuất đặc trưng của Face CNN
+            for param in self.face_features.parameters():
+                param.requires_grad = False
+            
+            # Đóng băng toàn bộ Body Extractor
+            for param in self.body_extractor.parameters():
+                param.requires_grad = False
+
+            # Đóng băng toàn bộ Context Extractor
+            for param in self.context_extractor.parameters():
+                param.requires_grad = False
 
     def forward(self, face_img, body_img, context_img):
-        face_feat = self.face_features(face_img) # [B, 256, 2, 2]
-        body_feat = self.body_extractor(body_img) # [B, 768]
-        context_feat = self.context_extractor(context_img) # [B, 768]
+        # Trích xuất đặc trưng từ Face-CNN
+        face_map = self.face_features(face_img)
+        face_feat = self.face_classifier_head(face_map)
         
-        face_final_feat = self.face_classifier_head(face_feat) # Convert [256, 2, 2] -> [256]
+        # Trích xuất đặc trưng từ Body và Context backbone
+        body_feat = self.body_extractor(body_img)
+        context_feat = self.context_extractor(context_img)
         
-        return face_final_feat, body_feat, context_feat
+        return face_feat, body_feat, context_feat
+# ==============================================================================
+# 3. MÔ HÌNH KẾT HỢP
+# ==============================================================================
 
 class FusionNetwork(nn.Module):
-    def __init__(self, use_face=True, use_body=True, use_context=True, num_classes=7):
+    """Hợp nhất đặc trưng từ 3 luồng với kích thước động."""
+    def __init__(self, face_dim, body_dim, context_dim, num_classes=7, 
+                 projection_dim=256, hidden_dim=512,
+                 use_face=True, use_body=True, use_context=True):
         super().__init__()
         self.use_face, self.use_body, self.use_context = use_face, use_body, use_context
-
-        face_dim, body_dim, context_dim = 256, 768, 768
-        self.body_proj = nn.Linear(body_dim, 256)
-        self.context_proj = nn.Linear(context_dim, 256)
-        self.face_bn = nn.BatchNorm1d(256)
-        self.body_bn = nn.BatchNorm1d(256)
-        self.context_bn = nn.BatchNorm1d(256)
+        
+        self.body_proj = nn.Linear(body_dim, projection_dim)
+        self.context_proj = nn.Linear(context_dim, projection_dim)
+        
+        self.face_bn = nn.BatchNorm1d(face_dim)
+        self.body_bn = nn.BatchNorm1d(projection_dim)
+        self.context_bn = nn.BatchNorm1d(projection_dim)
+        
+        combined_dim = face_dim + projection_dim + projection_dim
+        
         self.classifier = nn.Sequential(
-            nn.Linear(256 * 3, 256), nn.ReLU(inplace=True),
-            nn.Dropout(0.5), nn.Linear(256, num_classes)
+            nn.Linear(combined_dim, hidden_dim), 
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5), 
+            nn.Linear(hidden_dim, num_classes)
         )
 
     def forward(self, face_feat, body_feat, context_feat):
+        body_proj = self.body_proj(body_feat)
+        context_proj = self.context_proj(context_feat)
+        
+        face_bn = self.face_bn(face_feat)
+        body_bn = self.body_bn(body_proj)
+        context_bn = self.context_bn(context_proj)
 
-
-        body_proj, context_proj = self.body_proj(body_feat), self.context_proj(context_feat)
-        face_bn, body_bn, context_bn = self.face_bn(face_feat), self.body_bn(body_proj), self.context_bn(context_proj)
+        if not self.use_face: face_bn = torch.zeros_like(face_bn)
+        if not self.use_body: body_bn = torch.zeros_like(body_bn)
+        if not self.use_context: context_bn = torch.zeros_like(context_bn)
+        
         combined_features = torch.cat([face_bn, body_bn, context_bn], dim=1)
         return self.classifier(combined_features)
 
 class CAERSNet(BaseModel):
-    # (Giữ nguyên, không cần thay đổi)
-    def __init__(self, face_model_path, num_classes=7, use_face=True, use_body=True, use_context=True):
+    """Mô hình tổng thể, cho phép chọn backbone và cấu hình một cách linh hoạt."""
+    def __init__(self, face_model_path, num_classes=7, 
+                 body_backbone='swin_t', context_backbone='resnet50_places',
+                 use_face=True, use_body=True, use_context=True,
+                 projection_dim=256, hidden_dim=512, freeze_backbones=True):
         super().__init__()
-        self.backbone = FeatureExtractors(face_model_path, num_classes)
-        self.fusion_net = FusionNetwork(use_face, use_body, use_context, num_classes)
+        # Truyền cấu hình backbone xuống FeatureExtractors
+        self.backbone = FeatureExtractors(
+            face_model_path=face_model_path, 
+            num_classes=num_classes, 
+            body_backbone=body_backbone, 
+            context_backbone=context_backbone,
+            freeze_backbones= freeze_backbones  # Đóng băng các backbone theo mặc định
+        )
+        
+        # Lấy kích thước đặc trưng từ backbone và truyền vào FusionNetwork
+        self.fusion_net = FusionNetwork(
+            face_dim=self.backbone.face_dim,
+            body_dim=self.backbone.body_dim,
+            context_dim=self.backbone.context_dim,
+            num_classes=num_classes,
+            projection_dim=projection_dim,
+            hidden_dim=hidden_dim,
+            use_face=use_face,
+            use_body=use_body,
+            use_context=use_context
+        )
 
     def forward(self, face_img, body_img, context_img):
         face_feat, body_feat, context_feat = self.backbone(face_img, body_img, context_img)
