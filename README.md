@@ -2,7 +2,6 @@
  [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1PmyTWPNCn3NNNXMIwrFh4gH0UXoPi9AJ?usp=sharing)
 
- This is my Pytorch implementation for the CAER-S model in the paper [Context-Aware Emotion Recognition Networks](https://caer-dataset.github.io/file/JiyoungLee_iccv2019_CAER-Net.pdf)
 
 ## Installation
 First, clone this repository
@@ -148,4 +147,4 @@ python test.py --config [test config path] --resume [your checkpoint path]
 You can download the pretrained CAER-S model which achieves a test accuracy of **76.81%** at [this link](https://drive.google.com/file/d/1HxHZQmWnXbhYV0_HU2q-2fcC3twtGJZp/view?usp=sharing).
 
 ## Acknowledgements
-Many thanks to Victor Huang for an amazing [Pytorch-template](https://github.com/victoresque/pytorch-template).
+Many thanks to Victor Huang and Khanh Nguyen for an amazing [Pytorch-template](https://github.com/victoresque/pytorch-template) , [Pytorch-CAER](https://github.com/ndkhanh360/CAER).

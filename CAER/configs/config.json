@@ -15,8 +15,8 @@
   "test_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
-      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test_with_body.txt",
+      "root": "/kaggle/input/caer-s/CAER-S/test",
+      "detect_file": "/kaggle/working/test_with_body.txt",
       "train": false,
       "batch_size": 32,
       "shuffle": false,
@@ -26,8 +26,8 @@
   "train_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train",
-      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train_with_body.txt",
+      "root": "/kaggle/input/caer-s/CAER-S/train",
+      "detect_file": "/kaggle/working/train_with_body.txt",
       "batch_size": 32,
       "shuffle": true,
       "num_workers": 2
@@ -36,8 +36,8 @@
   "val_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
-      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/val_with_body.txt",
+      "root": "/kaggle/input/caer-s/CAER-S/test",
+      "detect_file": "/kaggle/working/val_with_body.txt",
       "train": false,
       "batch_size": 32,
       "shuffle": false,
