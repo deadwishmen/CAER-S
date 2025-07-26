@@ -100,7 +100,9 @@ class BaseTrainer:
 
             if best or epoch % self.save_period == 0: 
                 self._save_checkpoint(epoch, save_best=best)
-
+                if best:
+                    best_model_path = str(self.checkpoint_dir / 'model_best.pth')
+        return best_model_path
     def _prepare_device(self, n_gpu_use):
         """
         setup GPU device if available, move model into configured device

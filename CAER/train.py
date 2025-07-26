@@ -90,9 +90,10 @@ def main(config):
                       data_loader=data_loader,
                       lr_scheduler=lr_scheduler,
                       valid_data_loader=valid_data_loader)
-
-    trainer.train()
-
+    
+    best_model_path  = trainer.train()
+    if best_model_path:
+        print(best_model_path)
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')

@@ -18,7 +18,7 @@
       "root": "/kaggle/input/caer-s/CAER-S/test",
       "detect_file": "/kaggle/working/test_with_body.txt",
       "train": false,
-      "batch_size": 32,
+      "batch_size": 64,
       "shuffle": false,
       "num_workers": 2
     }
@@ -28,7 +28,7 @@
     "args": {
       "root": "/kaggle/input/caer-s/CAER-S/train",
       "detect_file": "/kaggle/working/train_with_body.txt",
-      "batch_size": 32,
+      "batch_size": 64,
       "shuffle": true,
       "num_workers": 2
     }
@@ -39,7 +39,7 @@
       "root": "/kaggle/input/caer-s/CAER-S/test",
       "detect_file": "/kaggle/working/val_with_body.txt",
       "train": false,
-      "batch_size": 32,
+      "batch_size": 64,
       "shuffle": false,
       "num_workers": 2
     }
