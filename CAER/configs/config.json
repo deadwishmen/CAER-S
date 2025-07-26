@@ -5,7 +5,7 @@
     "type": "CAERSNet",
     "args": {
       "num_classes": 7,
-      "face_model_path": "/content/drive/MyDrive/DatMinhNe/models/modelface/FER_trained_model.pt"
+      "face_model_path": "/kaggle/working/FER_trained_model.pt"
     }
   },
   "loss": "cross_entropy",
