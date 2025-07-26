@@ -48,7 +48,7 @@
     }
   },
   "optimizer": {
-    "type": "SGD",
+    "type": "AdamW",
     "args": {
       "lr": 5e-3,
       "momentum": 0.9,
@@ -63,12 +63,12 @@
     }
   },
   "trainer": {
-    "epochs": 1,
+    "epochs": 10,
     "save_dir": "saved/",
-    "save_period": 10,
+    "save_period": 5,
     "verbosity": 2,
     "monitor": "max val_accuracy",
-    "early_stop": 20,
+    "early_stop": 5,
     "tensorboard": false
   }
 }
