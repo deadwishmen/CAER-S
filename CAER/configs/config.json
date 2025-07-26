@@ -48,12 +48,12 @@
     }
   },
   "optimizer": {
-    "type": "AdamW",
-    "args": {
-      "lr": 5e-3,
-      "momentum": 0.9,
-      "nesterov": true
-    }
+      "type": "AdamW",
+      "args": {
+        "lr": 0.001,
+        "weight_decay": 0.01,
+        "betas": [0.9, 0.999]
+      }
   },
   "lr_scheduler": {  
     "type": "StepLR",
