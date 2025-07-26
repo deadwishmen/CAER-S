@@ -97,7 +97,7 @@ class Trainer(BaseTrainer):
         self.valid_metrics.reset()
         with torch.no_grad():
             for batch_idx, (inputs, labels) in enumerate(self.valid_data_loader):
-                face, body, context = inputs['face'].to(self.device), inputs['context'].to(self.device)
+                face, body, context = inputs['face'].to(self.device), inputs['body'].to(self.device), inputs['context'].to(self.device)
                 labels = labels.to(self.device)
 
                 output = self.model(face, body, context)
