@@ -70,12 +70,18 @@ def create_backbone(name: str):
         
     elif name == 'resnet50_places':
         model = models.resnet50(num_classes=365)
-        url = 'http://data.csail.mit.edu/places/places365/resnet50_places365.pth.tar'
-        checkpoint = torch.hub.load_state_dict_from_url(url, map_location=lambda storage, loc: storage)
-        state_dict = {str.replace(k,'module.',''): v for k,v in checkpoint['state_dict'].items()}
-        model.load_state_dict(state_dict)
-        print("Đã tải thành công trọng số ResNet50-Places365.")
-        feature_dim = model.fc.in_features # 2048
+        # Sử dụng URL ổn định hơn
+        url = 'http://places2.csail.mit.edu/models_places365/resnet50_places365.pth.tar'
+        print(f"Đang tiến hành tải trọng số cho '{name}'...")
+
+        checkpoint = torch.hub.load_state_dict_from_url(url, map_location='cpu')
+        state_dict = checkpoint.get('state_dict', checkpoint)
+        new_state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+        model.load_state_dict(new_state_dict)
+        print("✅ Đã tải thành công trọng số ResNet50-Places365.")
+
+
+        feature_dim = model.fc.in_features
         model.fc = nn.Identity()
         return model, feature_dim
 
