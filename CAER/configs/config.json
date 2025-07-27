@@ -63,12 +63,12 @@
     }
   },
   "trainer": {
-    "epochs": 10,
+    "epochs": 50,
     "save_dir": "saved/",
-    "save_period": 5,
+    "save_period": 10,
     "verbosity": 2,
     "monitor": "max val_accuracy",
-    "early_stop": 5,
+    "early_stop": 10,
     "tensorboard": false
   }
 }
