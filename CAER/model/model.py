@@ -226,8 +226,131 @@ class FusionNetwork(nn.Module):
         if not self.use_face: face_bn = torch.zeros_like(face_bn)
         if not self.use_body: body_bn = torch.zeros_like(body_bn)
         if not self.use_context: context_bn = torch.zeros_like(context_bn)
+
+        
         
         combined_features = torch.cat([face_bn, body_bn, context_bn], dim=1)
+        return self.classifier(combined_features)
+    
+class FusionNet_Att(nn.Module):
+    def __init__(self, face_dim, body_dim, context_dim, num_classes=7, 
+                 projection_dim=256, hidden_dim=512,
+                 use_face=True, use_body=True, use_context=True):
+        super().__init__()
+        self.use_face, self.use_body, self.use_context = use_face, use_body, use_context
+        
+        self.face_proj = nn.Linear(face_dim, projection_dim)
+        self.body_proj = nn.Linear(body_dim, projection_dim)
+        self.context_proj = nn.Linear(context_dim, projection_dim)
+        
+        self.face_bn = nn.BatchNorm1d(projection_dim)
+        self.body_bn = nn.BatchNorm1d(projection_dim)
+        self.context_bn = nn.BatchNorm1d(projection_dim)
+
+        self.modality_gating_mlp = nn.Sequential(
+            nn.Linear(projection_dim, 128),
+            nn.BatchNorm1d(128),
+            nn.GELU(),
+            nn.Linear(128, 1)
+        )
+        self.modality_softmax = nn.Softmax(dim=1)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(projection_dim*3, hidden_dim), 
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5), 
+            nn.Linear(hidden_dim, num_classes)
+        )
+
+    def _perform_cross_attention(self, feat_q, feat_k1, feat_k2):
+        """
+        Hàm thực hiện cross-attention cho một luồng đặc trưng.
+        Args:
+            feat_q (Tensor): Đặc trưng truy vấn (query) - luồng cần được attention.
+                             Shape: (batch, proj_dim)
+            feat_k1 (Tensor): Đặc trưng khóa (key) 1. Shape: (batch, proj_dim)
+            feat_k2 (Tensor): Đặc trưng khóa (key) 2. Shape: (batch, proj_dim)
+        Returns:
+            Tensor: Đặc trưng đã được attention. Shape: (batch, proj_dim)
+        """
+        # Reshape để thực hiện tích ma trận: (batch, proj_dim, 1)
+        q = feat_q.unsqueeze(2)
+        k1 = feat_k1.unsqueeze(2)
+        k2 = feat_k2.unsqueeze(2)
+
+        # Tính toán độ tương đồng: (batch, 1, 1)
+        attention_score1 = torch.matmul(q.transpose(1, 2), k1)
+        attention_score2 = torch.matmul(q.transpose(1, 2), k2)
+
+        # Nối các điểm attention và áp dụng softmax: (batch, 2, 1)
+        attention_weights = self.cross_attention_softmax(
+            torch.cat((attention_score1, attention_score2), dim=1)
+        )
+
+        # Áp dụng attention weights lên các đặc trưng khóa
+        # (batch, proj_dim, 1) * (batch, 1, 1) -> (batch, proj_dim, 1)
+        weighted_k1 = k1 * attention_weights[:, 0, :].unsqueeze(1)
+        weighted_k2 = k2 * attention_weights[:, 1, :].unsqueeze(1)
+        
+        # Kết hợp các đặc trưng đã được attention và cộng với đặc trưng gốc
+        attended_feat = feat_q + weighted_k1.squeeze(2) + weighted_k2.squeeze(2)
+        return attended_feat
+
+
+
+    def forward(self, face_feat, body_feat, context_feat):
+
+        face_proj = self.face_proj(face_feat)
+        body_proj = self.body_proj(body_feat)
+        context_proj = self.context_proj(context_feat)
+        
+        face_bn = self.face_bn(face_proj)
+        body_bn = self.body_bn(body_proj)
+        context_bn = self.context_bn(context_proj)
+
+
+
+
+        if not self.use_face: face_bn = torch.zeros_like(face_bn)
+        if not self.use_body: body_bn = torch.zeros_like(body_bn)
+        if not self.use_context: context_bn = torch.zeros_like(context_bn)
+
+
+               # ========== Bước 2: Cross-Attention giữa các phương thức ==========
+        # Mỗi đặc trưng được điều chỉnh dựa trên sự tương tác với 2 đặc trưng còn lại
+        attended_context = self._perform_cross_attention(context_bn, body_bn, face_bn)
+        attended_body = self._perform_cross_attention(body_bn, context_bn, face_bn)
+        attended_face = self._perform_cross_attention(face_bn, context_bn, body_bn)
+
+        # ========== Bước 3: Modality Gating (Attention theo từng luồng) ==========
+        # Tính một điểm số duy nhất cho mỗi luồng đặc trưng
+        score_context = self.modality_gating_mlp(attended_context)
+        score_body = self.modality_gating_mlp(attended_body)
+        score_face = self.modality_gating_mlp(attended_face)
+
+        # Nối các điểm số và áp dụng softmax để có trọng số
+        # Shape: (batch_size, 3)
+        modality_scores = torch.cat((score_context, score_body, score_face), dim=1)
+        modality_weights = self.modality_softmax(modality_scores)
+
+        # Nhân mỗi luồng đặc trưng với trọng số tương ứng của nó
+        # unsqueeze(1) để broadcasting: (batch, 1) -> (batch, proj_dim)
+        gated_context = attended_context * modality_weights[:, 0].unsqueeze(1)
+        gated_body = attended_body * modality_weights[:, 1].unsqueeze(1)
+        gated_face = attended_face * modality_weights[:, 2].unsqueeze(1)
+
+
+
+
+        # Tính attention weights
+        attention_weights = torch.sigmoid(gated_face + gated_body + gated_context)
+        
+        # Nhân các đặc trưng với attention weights
+        face_att = face_bn * attention_weights
+        body_att = body_bn * attention_weights
+        context_att = context_bn * attention_weights
+        
+        combined_features = torch.cat([face_att, body_att, context_att], dim=1)
         return self.classifier(combined_features)
 
 class CAERSNet(BaseModel):
@@ -235,7 +358,7 @@ class CAERSNet(BaseModel):
     def __init__(self, face_model_path, num_classes=7, 
                  body_backbone='swin_t', context_backbone='resnet50_places',
                  use_face=True, use_body=True, use_context=True,
-                 projection_dim=256, hidden_dim=512, freeze_backbones=True):
+                 projection_dim=256, hidden_dim=512, freeze_backbones=True, attention=True):
         super().__init__()
         # Truyền cấu hình backbone xuống FeatureExtractors
         self.backbone = FeatureExtractors(
@@ -247,17 +370,32 @@ class CAERSNet(BaseModel):
         )
         
         # Lấy kích thước đặc trưng từ backbone và truyền vào FusionNetwork
-        self.fusion_net = FusionNetwork(
-            face_dim=self.backbone.face_dim,
-            body_dim=self.backbone.body_dim,
-            context_dim=self.backbone.context_dim,
-            num_classes=num_classes,
-            projection_dim=projection_dim,
-            hidden_dim=hidden_dim,
-            use_face=use_face,
-            use_body=use_body,
-            use_context=use_context
-        )
+        if attention:
+            self.fusion_net = FusionNet_Att(
+                face_dim=self.backbone.face_dim,
+                body_dim=self.backbone.body_dim,
+                context_dim=self.backbone.context_dim,
+                num_classes=num_classes,
+                projection_dim=projection_dim,
+                hidden_dim=hidden_dim,
+                use_face=use_face,
+                use_body=use_body,
+                use_context=use_context
+            )
+        else:
+            # Sử dụng FusionNetwork nếu không dùng attention
+            print("Sử dụng FusionNetwork không có attention.")
+            self.fusion_net = FusionNetwork(
+                face_dim=self.backbone.face_dim,
+                body_dim=self.backbone.body_dim,
+                context_dim=self.backbone.context_dim,
+                num_classes=num_classes,
+                projection_dim=projection_dim,
+                hidden_dim=hidden_dim,
+                use_face=use_face,
+                use_body=use_body,
+                use_context=use_context
+            )
 
     def forward(self, face_img, body_img, context_img):
         face_feat, body_feat, context_feat = self.backbone(face_img, body_img, context_img)

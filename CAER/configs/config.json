@@ -7,8 +7,9 @@
       "num_classes": 7,
       "face_model_path": "/kaggle/working/FER_trained_model.pt",
       "body_backbone": "swin_t",
-      "context_backbone": "resnet50",
-      "freeze_backbones": true
+      "context_backbone": "resnet50_places",
+      "freeze_backbones": true,
+      "attention": true
     }
   },
   "loss": "cross_entropy",
