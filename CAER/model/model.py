@@ -259,6 +259,7 @@ class FusionNet_Att(nn.Module):
             nn.GELU(),
             nn.Linear(128, 1)
         )
+        self.cross_attention_softmax = nn.Softmax(dim=1)
         self.modality_softmax = nn.Softmax(dim=1)
         
         self.classifier = nn.Sequential(
