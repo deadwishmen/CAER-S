@@ -1,17 +1,9 @@
 # CAER-S
  [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
- [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1PmyTWPNCn3NNNXMIwrFh4gH0UXoPi9AJ?usp=sharing)
+ [![Open In Kaggle](https://img.shields.io/badge/Open%20in-Kaggle-blue)](https://www.kaggle.com/code/deadwish1/caer-model)
 
 
-## Installation
-First, clone this repository
-```bash
-git clone https://github.com/ndkhanh360/CAER.git
-```
-Then, install the dependencies
-```bash
-pip install -r requirements.txt
-```
+
 ## Folder Structure
 This project was created with [Pytorch-template](https://github.com/victoresque/pytorch-template) by Victor Huang. It has the following structure
   ```
@@ -54,79 +46,84 @@ This project was created with [Pytorch-template](https://github.com/victoresque/
       ├── util.py
       └── ...
   ```
-Download [CAER-S dataset](https://caer-dataset.github.io/download.html) and the results of `dlib's cnn detector` for the [training](https://drive.google.com/file/d/1Em4LUdJ6VS8sOo_XdBi96xu8nwoo_Y4g/view?usp=sharing), [validation](https://drive.google.com/file/d/1thrfz6IdPIXSQRZ6LW-5tGVabbfHUoeA/view?usp=sharing) and [test set](https://drive.google.com/file/d/1eEpjAmLrz9f9_SqZh5qCPsScHikg91V4/view?usp=sharing), then put them into folder `data`.
+Download [CAER-S dataset](https://caer-dataset.github.io/download.html)
 
 ## Usage 
 Move into `configs` directory and create configuration file for training and/or testing:
 ```
 {
-  // configuration for both training and testing
-  "name": "CAERS_Session",             // session name
-  "n_gpu": 1,                          // number of GPUs to use for training.
-  "arch": {                            // architecture
-      "type": "CAERSNet",
-      "args": {}
-  },
-  "loss": "cross_entropy",             // loss
-  "metrics": [
-    "accuracy"                         // list of metrics to evaluate
-  ],   
-
-  // configuration for testing only 
-  "test_loader": {
-      "type": "CAERSDataLoader",
-      "args":{
-          "root": "data/CAER-S/test",
-          "detect_file": "data/test.txt",
-          "train": false,
-          "batch_size": 128,
-          "shuffle": false,
-          "num_workers": 16
-      }
-  },
-
-  // configuration for training only
-  "train_loader": {                    // loader for training 
-    "type": "CAERSDataLoader",         // selecting data loader
-    "args":{
-      "root": "data/CAER-S/train",     // train dataset directory
-      "detect_file": "data/train.txt", // face detector results
-      "batch_size": 128,               // batch size
-      "shuffle": true,                 // shuffle training data 
-      "num_workers": 16,               // number of cpu processes to be used for data loading
+  "name": "CAERS_Session",
+  "n_gpu": 1,
+  "arch": {
+    "type": "CAERSNet",
+    "args": {
+      "num_classes": 7,
+      "face_model_path": "/kaggle/working/FER_trained_model.pt",
+      "body_backbone": "swin_t",
+      "context_backbone": "resnet50_places",
+      "freeze_backbones": true,
+      "attention": true
     }
   },
-
+  "loss": "cross_entropy",
+  "metrics": [
+    "accuracy"
+  ],
+  "test_loader": {
+    "type": "CAERSDataLoader",
+    "args": {
+      "root": "/kaggle/input/caer-s/CAER-S/test",
+      "detect_file": "/kaggle/working/test_with_body.txt",
+      "train": false,
+      "batch_size": 64,
+      "shuffle": false,
+      "num_workers": 2
+    }
+  },
+  "train_loader": {
+    "type": "CAERSDataLoader",
+    "args": {
+      "root": "/kaggle/input/caer-s/CAER-S/train",
+      "detect_file": "/kaggle/working/train_with_body.txt",
+      "batch_size": 64,
+      "shuffle": true,
+      "num_workers": 2
+    }
+  },
   "val_loader": {
     "type": "CAERSDataLoader",
-    "args":{
-        "root": "data/CAER-S/test",
-        "detect_file": "data/val.txt",
-        "train": false,
-        "batch_size": 128,
-        "shuffle": false,
-        "num_workers": 16
+    "args": {
+      "root": "/kaggle/input/caer-s/CAER-S/test",
+      "detect_file": "/kaggle/working/val_with_body.txt",
+      "train": false,
+      "batch_size": 64,
+      "shuffle": false,
+      "num_workers": 2
     }
   },
-
   "optimizer": {
-    "type": "SGD",
-    "args":{
-      "lr": 1e-2,                      // learning rate
-      "momentum": 0.9,                 // (optional) weight decay
-      "nesterov": true
+      "type": "AdamW",
+      "args": {
+        "lr": 0.001,
+        "weight_decay": 0.01,
+        "betas": [0.9, 0.999]
+      }
+  },
+  "lr_scheduler": {  
+    "type": "StepLR",
+    "args": {
+      "step_size": 10,
+      "gamma": 0.1
     }
-  },                        
+  },
   "trainer": {
-    "epochs": 50,                      // number of training epochs
-    "save_dir": "saved/",              // checkpoints are saved in save_dir/models/name
-    "save_freq": 10,                   // save checkpoints every save_freq epochs
-    "verbosity": 2,                    // 0: quiet, 1: per epoch, 2: full
-  
-    "monitor": "max val_accuracy"      // mode and metric for model performance monitoring. set 'off' to disable.
-    "early_stop": 20	                 // number of epochs to wait before early stop. set 0 to disable.
-  
-    "tensorboard": true,               // enable tensorboard visualization
+    "epochs": 50,
+    "save_dir": "saved/",
+    "save_period": 5,
+    "verbosity": 2,
+    "monitor": "max val_accuracy",
+    "early_stop": 5,
+    "tensorboard": false
   }
 }
 ```
@@ -141,10 +138,35 @@ python train.py --resume [your checkpoint path]
 ```
 To evaluate the model on test data, simply enter
 ```
-python test.py --config [test config path] --resume [your checkpoint path]
-```
+import os
 
-You can download the pretrained CAER-S model which achieves a test accuracy of **76.81%** at [this link](https://drive.google.com/file/d/1HxHZQmWnXbhYV0_HU2q-2fcC3twtGJZp/view?usp=sharing).
+# Path to the log
+log_file = 'output.log'
+best_model_path = ''
+
+try:
+    with open(log_file, 'r') as f:
+        # Lọc ra các dòng không rỗng
+        lines = [line.strip() for line in f if line.strip()]
+        if lines:
+            best_model_path = lines[-1] # Get the last line
+except FileNotFoundError:
+    print(f"Lỗi: không tìm thấy file {log_file}")
+
+
+if best_model_path and 'model_best.pth' in best_model_path and os.path.exists(best_model_path):
+    print(f"--- Đã tìm thấy model tốt nhất: {best_model_path} ---")
+    print("--- Bắt đầu kiểm thử ---")
+    
+    # Replace this with your actual config path
+    config_file = "/kaggle/working/CAER-S/CAER/configs/config.json" 
+    
+    !python -u test.py --config "{config_file}" --resume "{best_model_path}"
+    
+else:
+    print(f"Error: No valid checkpoint path found in the file log")
+    print(f"Last line read: '{best_model_path}'")
+```
 
 ## Acknowledgements
 Many thanks to Victor Huang and Khanh Nguyen for an amazing [Pytorch-template](https://github.com/victoresque/pytorch-template) , [Pytorch-CAER](https://github.com/ndkhanh360/CAER).
