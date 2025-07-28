@@ -151,12 +151,12 @@ try:
         if lines:
             best_model_path = lines[-1] # Get the last line
 except FileNotFoundError:
-    print(f"Lỗi: không tìm thấy file {log_file}")
+    print(f"Error: Log file {log_file} not found.")
 
 
 if best_model_path and 'model_best.pth' in best_model_path and os.path.exists(best_model_path):
-    print(f"--- Đã tìm thấy model tốt nhất: {best_model_path} ---")
-    print("--- Bắt đầu kiểm thử ---")
+    print(f"--- Best model found: {best_model_path} ---")
+    print("--- Starting evaluation ---")
     
     # Replace this with your actual config path
     config_file = "/kaggle/working/CAER-S/CAER/configs/config.json" 
