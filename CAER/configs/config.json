@@ -9,7 +9,7 @@
       "body_backbone": "swin_t",
       "context_backbone": "resnet50_places",
       "freeze_backbones": true,
-      "attention": true
+      "attention": false
     }
   },
   "loss": "cross_entropy",
