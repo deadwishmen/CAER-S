@@ -6,7 +6,7 @@ import data_loader.data_loaders as module_data
 import model.model as module_arch
 from parse_config import ConfigParser
 from pytorch_grad_cam import GradCAM
-from prtorch_grad_cam.utils.image import show_cam_on_image
+from pytorch_grad_cam.utils.image import show_cam_on_image
 from tqdm import tqdm
 import cv2
 
