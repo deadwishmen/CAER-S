@@ -1,7 +1,7 @@
 import argparse
 import torch
 import os
-import numpty as np
+import numpy as np
 import data_loader.data_loaders as module_data
 import model.model as module_arch
 from parse_config import ConfigParser
