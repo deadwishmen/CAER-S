@@ -5,8 +5,8 @@
     "type": "CAERSNet",
     "args": {
       "num_classes": 7,
-      "face_model_path": "/kaggle/working/FER_trained_model.pt",
-      "body_backbone": "resnet50",
+      "face_model_path": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S_result/FER_trained_model.pt",
+      "body_backbone": "swin_t",
       "context_backbone": "resnet50_places",
       "use_body": true,
       "use_context": true,
@@ -23,8 +23,8 @@
   "test_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/kaggle/input/caer-s/CAER-S/test",
-      "detect_file": "/kaggle/working/test_with_body.txt",
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test_with_body.txt",
       "train": false,
       "batch_size": 64,
       "shuffle": false,
@@ -34,8 +34,8 @@
   "train_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/kaggle/input/caer-s/CAER-S/train",
-      "detect_file": "/kaggle/working/train_with_body.txt",
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/train_with_body.txt",
       "batch_size": 64,
       "shuffle": true,
       "num_workers": 2
@@ -44,8 +44,8 @@
   "val_loader": {
     "type": "CAERSDataLoader",
     "args": {
-      "root": "/kaggle/input/caer-s/CAER-S/test",
-      "detect_file": "/kaggle/working/val_with_body.txt",
+      "root": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/test",
+      "detect_file": "/content/drive/MyDrive/DatMinhNe/CAER/CAER-S/val_with_body.txt",
       "train": false,
       "batch_size": 64,
       "shuffle": false,
@@ -76,9 +76,19 @@
     "early_stop": 5,
     "tensorboard": false
   },
-  "grad_cam":{
-    "output_dir": "saved/grad_cam_output",
-    "taget_layers": "backbone.body_extractor.layer4",
-    "visualiza_on": "body"
-  }
+  "grad_cam": {
+    "output_dir": "output/grad_cam_results",
+    "visualize_on": "body",
+    "target_layers": "backbone.body_extractor.norm",
+    "num_samples": 5
+  },
+  "class_names":[
+    "Anger",
+    "Disgust",
+    "Fear",
+    "Happy",
+    "Neutral",
+    "Sad",
+    "Surprise"
+  ]
 }

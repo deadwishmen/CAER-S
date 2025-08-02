@@ -5,17 +5,18 @@ import numpy as np
 import data_loader.data_loaders as module_data
 import model.model as module_arch
 from parse_config import ConfigParser
-from pytorch_grad_cam import GradCAM
+from pytorch_grad_cam import EigenCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from tqdm import tqdm
 import cv2
+import random
 
 
 
 def main(config):
     logger = config.get_logger('detect')
 
-    config['train_loader']['args']['batch_size'] = 1
+    config['test_loader']['args']['batch_size'] = 1
 
     data_loader = config.init_obj('test_loader', module_data)
 
@@ -25,7 +26,7 @@ def main(config):
 
     logger.info('loading checkpoint: {} ...'.format(config.resume))
 
-    checkpoint = torch.load(config.resume, wieghts_only=False)
+    checkpoint = torch.load(config.resume, map_location=torch.device('cpu'), weights_only=False)
 
     state_dict = checkpoint['state_dict']
 
@@ -37,7 +38,7 @@ def main(config):
     model = model.to(device)
     model.eval()
 
-    # --- Grad-CAM ---
+    # --- EigenCAM ---
 
     grad_cam_config = config['grad_cam']
     output_dir = grad_cam_config['output_dir']
@@ -45,85 +46,132 @@ def main(config):
     visualize_on = grad_cam_config.get('visualiza_on', 'body')
 
     # Get target layers from config
-
     try:
         target_layers_str = grad_cam_config['target_layers']
-        # using eval path layers children 
+        # using eval path layers children
         target_layers = [eval(f"model.{target_layers_str}")]
         logger.info(f"Using target layers: {target_layers_str}")
     except Exception as e:
         logger.error(f"Error parsing target layers: {e}")
         return
 
-    # Initialize Grad-CAM
-    cam = GradCAM(model=model, target_layers=[model.layer4[-1]], use_cuda=torch.cuda.is_available())
-    class_names = data_loader.dataset.classes
+    # Wrapper classes cho từng input type
+    class FaceModelWrapper(torch.nn.Module):
+        def __init__(self, model, context_sample, body_sample):
+            super().__init__()
+            self.model = model
+            self.context_sample = context_sample
+            self.body_sample = body_sample
+            
+        def forward(self, face):
+            return self.model(face, self.body_sample, self.context_sample)
 
-    logger.info(f"Starting detection. Visualinzing CAM on '{visualize_on}' image ...")
+    class BodyModelWrapper(torch.nn.Module):
+        def __init__(self, model, face_sample, context_sample):
+            super().__init__()
+            self.model = model
+            self.face_sample = face_sample
+            self.context_sample = context_sample
+            
+        def forward(self, body):
+            return self.model(self.face_sample, body, self.context_sample)
+
+    class ContextModelWrapper(torch.nn.Module):
+        def __init__(self, model, face_sample, body_sample):
+            super().__init__()
+            self.model = model
+            self.face_sample = face_sample
+            self.body_sample = body_sample
+            
+        def forward(self, context):
+            return self.model(self.face_sample, self.body_sample, context)
+
+    class_names = config['class_names']
     
-    # --- Loop through the data loader ---
+    # Số lượng mẫu random muốn xử lý
+    num_random_samples = grad_cam_config.get('num_samples', 10)  # Mặc định 10 mẫu
+    
+    # Tạo list các index random
+    total_samples = len(data_loader)
+    if num_random_samples >= total_samples:
+        selected_indices = list(range(total_samples))
+    else:
+        selected_indices = random.sample(range(total_samples), num_random_samples)
+    
+    logger.info(f"Selected {len(selected_indices)} random samples from {total_samples} total samples")
+    logger.info(f"Selected indices: {selected_indices}")
+
+    logger.info(f"Starting detection. Visualizing CAM on '{visualize_on}' image ...")
+    
+    # --- Vòng lặp xử lý dữ liệu ---
     for i, (data, target) in enumerate(tqdm(data_loader)):
-            face, body, context, target = data['face'].to(device), data['body'].to(device), data['context'].to(device), target.to(device)
-
-            # Với mô hình đa đầu vào, input_tensor phải là một tuple
-            input_tensor_tuple = (face, body, context)
-
-            # Lấy output từ model để xác định class dự đoán
-            output = model(*input_tensor_tuple)
-            pred_index = torch.argmax(output, dim=1).item()
-            true_index = target.item()
-
-            # Tạo heatmap. target_category=None sẽ tự động dùng class có score cao nhất
-            grayscale_cam = cam(input_tensor=input_tensor_tuple, target_category=None)
-            grayscale_cam = grayscale_cam[0, :]
-
-            # --- 5. Trực quan hóa và lưu ảnh ---
-            if visualize_on == 'face':
-                input_image_tensor = face[0]
-            elif visualize_on == 'context':
-                input_image_tensor = context[0]
-            else: # Mặc định là body
-                input_image_tensor = body[0]
-                
-            # De-normalize ảnh để hiển thị đúng màu sắc
-            # QUAN TRỌNG: Hãy thay đổi mean và std cho đúng với quá trình tiền xử lý của bạn
-            mean = np.array([0.485, 0.456, 0.406])
-            std = np.array([0.229, 0.224, 0.225])
+        # Chỉ xử lý các sample được chọn
+        if i not in selected_indices:
+            continue
             
-            # Nếu ảnh là grayscale (ví dụ: face), mở rộng thành 3 kênh
-            if input_image_tensor.shape[0] == 1:
-                input_image_tensor = input_image_tensor.repeat(3, 1, 1)
+        face, body, context, target = data['face'].to(device), data['body'].to(device), data['context'].to(device), target.to(device)
 
-            rgb_img = input_image_tensor.cpu().numpy().transpose((1, 2, 0))
-            rgb_img = std * rgb_img + mean
-            rgb_img = np.clip(rgb_img, 0, 1)
-            
-            # Chồng heatmap lên ảnh gốc
-            visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+        input_tensor_tuple = (face, body, context)
 
-            # Chuyển đổi lại sang BGR để OpenCV lưu
-            visualization_bgr = cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR)
-            original_img_bgr = cv2.cvtColor((rgb_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+        output = model(*input_tensor_tuple)
 
-            # Tạo tên file
-            pred_class_name = class_names[pred_index]
-            true_class_name = class_names[true_index]
-            filename_prefix = f"sample_{i}_true_{true_class_name}_pred_{pred_class_name}"
-            
-            # Lưu các ảnh
-            cv2.imwrite(os.path.join(output_dir, f"{filename_prefix}_original_{visualize_on}.jpg"), original_img_bgr)
-            cv2.imwrite(os.path.join(output_dir, f"{filename_prefix}_cam_on_{visualize_on}.jpg"), visualization_bgr)
+        pred_index = torch.argmax(output, dim=1)[0].item()
+        true_index = target[0].item()
 
-    logger.info(f"Grad-CAM generation finished. Results saved in '{output_dir}'.")
+        # Tạo wrapper model tương ứng với visualize_on
+        if visualize_on == 'face':
+            wrapped_model = FaceModelWrapper(model, context, body)
+            input_for_cam = face
+            input_image_tensor = face[0]
+        elif visualize_on == 'context':
+            wrapped_model = ContextModelWrapper(model, face, body)
+            input_for_cam = context
+            input_image_tensor = context[0]
+        else:  # body
+            wrapped_model = BodyModelWrapper(model, face, context)
+            input_for_cam = body
+            input_image_tensor = body[0]
+
+        # Khởi tạo EigenCAM cho wrapper model cụ thể
+        cam = EigenCAM(model=wrapped_model, target_layers=target_layers)
+        
+        # Tạo heatmap
+        grayscale_cam = cam(input_tensor=input_for_cam, targets=None)
+        grayscale_cam = grayscale_cam[0, :]
+
+        # --- Phần trực quan hóa và lưu ảnh ---
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        
+        if input_image_tensor.shape[0] == 1:
+            input_image_tensor = input_image_tensor.repeat(3, 1, 1)
+
+        rgb_img = input_image_tensor.cpu().numpy().transpose((1, 2, 0))
+        rgb_img = std * rgb_img + mean
+        rgb_img = np.clip(rgb_img, 0, 1)
+        
+        visualization = show_cam_on_image(rgb_img, grayscale_cam, use_rgb=True)
+
+        visualization_bgr = cv2.cvtColor(visualization, cv2.COLOR_RGB2BGR)
+        original_img_bgr = cv2.cvtColor((rgb_img * 255).astype(np.uint8), cv2.COLOR_RGB2BGR)
+
+        pred_class_name = class_names[pred_index]
+        true_class_name = class_names[true_index]
+        filename_prefix = f"sample_{i}_true_{true_class_name}_pred_{pred_class_name}"
+        
+        cv2.imwrite(os.path.join(output_dir, f"{filename_prefix}_original_{visualize_on}.jpg"), original_img_bgr)
+        cv2.imwrite(os.path.join(output_dir, f"{filename_prefix}_cam_on_{visualize_on}.jpg"), visualization_bgr)
+
+    logger.info(f"EigenCAM generation finished. Results saved in '{output_dir}'.")
 
 if __name__ == '__main__':
     args = argparse.ArgumentParser(description='PyTorch Template')
     args.add_argument('-c', '--config', default=None, type=str,
-                      help='config file path (default: None)')
+                        help='config file path (default: None)')
     args.add_argument('-r', '--resume', default=None, type=str,
-                      help='path to latest checkpoint (default: None)')
+                        help='path to latest checkpoint (default: None)')
     args.add_argument('-d', '--device', default=None, type=str,
-                      help='indices of GPUs to enable (default: all)')
+                        help='indices of GPUs to enable (default: all)')
     
     config = ConfigParser.from_args(args)
     main(config)
